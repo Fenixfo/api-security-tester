@@ -1,0 +1,270 @@
+{
+  "info": {
+    "name": "API Security Test Suite - Template",
+    "description": "Plantilla base. Reemplaza {{baseUrl}} y los tokens en el environment antes de ejecutar. Organizado por categoria OWASP API Security Top 10. Ejecutar solo contra entornos autorizados (staging/sandbox).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "{{API_BASE_URL}}" },
+    { "key": "userToken", "value": "{{USER_TOKEN}}" },
+    { "key": "otherUserToken", "value": "{{OTHER_USER_TOKEN}}" },
+    { "key": "adminToken", "value": "{{ADMIN_TOKEN}}" },
+    { "key": "ownResourceId", "value": "REEMPLAZAR" },
+    { "key": "otherUserResourceId", "value": "REEMPLAZAR" }
+  ],
+  "item": [
+    {
+      "name": "API1 - BOLA_IDOR",
+      "item": [
+        {
+          "name": "TC-01 BOLA negativo - recurso de otro usuario",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }],
+            "url": "{{baseUrl}}/orders/{{otherUserResourceId}}"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('BOLA: acceso denegado a recurso ajeno', function () {",
+                "  pm.expect([403, 404]).to.include(pm.response.code);",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "TC-02 BOLA positivo - recurso propio",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }],
+            "url": "{{baseUrl}}/orders/{{ownResourceId}}"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Positivo: acceso permitido a recurso propio', function () {",
+                "  pm.response.to.have.status(200);",
+                "});"
+              ]
+            }
+          }]
+        }
+      ]
+    },
+    {
+      "name": "API3 - Mass_Assignment",
+      "item": [
+        {
+          "name": "TC-04 Mass assignment - inyeccion de campo role",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{userToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"Ana Test\", \"role\": \"admin\"}"
+            },
+            "url": "{{baseUrl}}/users/me"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Mass assignment: campo role ignorado', function () {",
+                "  if (pm.response.code === 200) {",
+                "    const body = pm.response.json();",
+                "    pm.expect(body.role).to.not.equal('admin');",
+                "  } else {",
+                "    pm.expect([422, 400]).to.include(pm.response.code);",
+                "  }",
+                "});"
+              ]
+            }
+          }]
+        }
+      ]
+    },
+    {
+      "name": "API2 - Broken_Authentication",
+      "item": [
+        {
+          "name": "TC-06 JWT alg=none rechazado",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJhZG1pbiJ9." }
+            ],
+            "url": "{{baseUrl}}/users/me"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('JWT alg=none rechazado con 401', function () {",
+                "  pm.response.to.have.status(401);",
+                "});"
+              ]
+            }
+          }]
+        }
+      ]
+    },
+    {
+      "name": "API5 - BFLA",
+      "item": [
+        {
+          "name": "TC-09 Ruta admin bloqueada para user normal",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }],
+            "url": "{{baseUrl}}/admin/users"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('BFLA: 403 para rol insuficiente', function () {",
+                "  pm.response.to.have.status(403);",
+                "});"
+              ]
+            }
+          }]
+        }
+      ]
+    },
+    {
+      "name": "API4 - Unrestricted_Resource_Consumption",
+      "item": [
+        {
+          "name": "TC-11 Limite de paginacion",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }],
+            "url": "{{baseUrl}}/search?limit=999999"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Limite de paginacion aplicado', function () {",
+                "  if (pm.response.code === 200) {",
+                "    const body = pm.response.json();",
+                "    pm.expect((body.results || []).length).to.be.at.most(200);",
+                "  } else {",
+                "    pm.expect([400, 422]).to.include(pm.response.code);",
+                "  }",
+                "});"
+              ]
+            }
+          }]
+        }
+      ]
+    },
+    {
+      "name": "Injections",
+      "item": [
+        {
+          "name": "TC-13 SQL Injection en query param",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }],
+            "url": "{{baseUrl}}/products?category=' OR '1'='1"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('SQLi: sin error de sintaxis SQL filtrado ni bypass', function () {",
+                "  pm.expect([200, 400, 422]).to.include(pm.response.code);",
+                "  pm.expect(pm.response.text().toLowerCase()).to.not.include('sql syntax');",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "TC-14 NoSQL Injection en login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\": \"admin\", \"password\": {\"$ne\": null}}"
+            },
+            "url": "{{baseUrl}}/login"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('NoSQLi: login rechazado', function () {",
+                "  pm.response.to.have.status(401);",
+                "});"
+              ]
+            }
+          }]
+        },
+        {
+          "name": "TC-16 XSS almacenado en comentarios",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{userToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"body\": \"<script>alert(1)</script>\"}"
+            },
+            "url": "{{baseUrl}}/comments"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('XSS: request de creacion aceptada (validar lectura en request separado)', function () {",
+                "  pm.expect([200, 201]).to.include(pm.response.code);",
+                "});"
+              ]
+            }
+          }]
+        }
+      ]
+    },
+    {
+      "name": "API7 - SSRF",
+      "item": [
+        {
+          "name": "TC-17 SSRF via webhook URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{userToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"url\": \"http://169.254.169.254/latest/meta-data/\"}"
+            },
+            "url": "{{baseUrl}}/webhooks"
+          },
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('SSRF: URL de metadata interna rechazada', function () {",
+                "  pm.expect([400, 422]).to.include(pm.response.code);",
+                "});"
+              ]
+            }
+          }]
+        }
+      ]
+    }
+  ]
+}
